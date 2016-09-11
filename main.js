@@ -1,105 +1,52 @@
 'use strict';
-
 $(window).load(function() {
-  let chart = $('#chart');
-  let legend = $('#legend');
-  let status = $('#status');
-  let title = $('#chart-title');
-  let legendTitle = $('#legend-title');
-  let repoTitle = $('#repo-title');
-
-
-  status.html('Retrieving Repository Metadata');
+  let scm = new ColorScheme;
+  scm.from_hue(21).scheme('triade').distance(0.1).add_complement(false).variation('pastel').web_safe(true);
+  let colors = scm.colors();
   let instance = api.instance.get();
 
-  repoTitle.html(`Running Query on ${instance.repos.name}`);
+  let json = api.boa.run('npm.boa');
+  $('#loading').hide();
+  $('#content').show();
 
-  status.html('Running Boa Query');
-  let json = api.boa.run('npm-over-revisions.boa', 'json');
-  console.log(json);
-  let sum = function(ar) {
-    return _.reduce(ar, function(memo, num) {
-      return memo + num;
+  let canvas = $('#chart-output').get(0).getContext("2d");
+  let chartData = [];
+  let count = 0;
+
+  for(let index in json.DEVs) {
+    count++;
+    $('#numToShow').append(`<option value="${count}"> ${count} </option>`);
+    chartData.push({
+        label: index,
+        value: json.DEVs[index],
+        color: '#' + _.sample(colors)
     });
   }
 
-  status.html('Formatting Data');
-  let data = json['NPM'];
-  let years = Object.keys(data);
-
-  let months = ['Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-  let labels = _.flatten(
-    _.map(years, function(y) {
-      return _.map(months, function(m) {
-        return m + ' ' + y + '\'';
-      });
-    })
-  );
-
-
-  let datasets = [];
-  let attributes = {};
-  _.each(years, function(year) {
-    _.each(data[year], function(chunk, m) {
-      _.each(chunk, function(val, key) {
-        if (val > 0) {
-           if (!(key in attributes)) {
-             attributes[key] = {
-               "label" : key,
-               "data": {}
-             }
-           }
-           let lbl = m + ' ' + year + '\'';
-           attributes[key]['data'][lbl] = sum(val);
-         }
-      });
-    });
+  $('#numToShow').change(function() {
+    $('#output').html('<canvas id="chart-output"> </canvas>');
+    canvas = $('#chart-output').get(0).getContext('2d');
+    display($('#numToShow').val());
   });
 
-  legendTitle.html(`Found ${Object.keys(attributes).length} Types`);
+  chartData = _.sortBy(chartData, function(line) {
+    return Number(-line.value);
+  });
 
-  let options = {
-    'pointDotRadius': 1,
-    'scaleFontSize': 11,
-    'responsive': true,
-    'datasetFill': true
+  display(1);
+
+  $('#app-title').html(`NPM per Type on ${instance.repos.name}`);
+
+  function display(num) {
+    let limitedData = _.first(chartData, num);
+
+    $('#table-output-body').html('');
+    _.each(limitedData, function(element, index, list) {
+      let num = index + 1;
+      $('#table-output-body').append(`<tr><td> ${num} </td> <td> ${element.label} </td> <td> ${element.value} </td> </tr>`)
+    });
+
+    let outputChart = new Chart(canvas).Pie(limitedData, {responsive: true});
   }
-
-  status.html('Drawing Legend');
-  _.each(attributes, function(att, i) {
-    legend.append(`<li data-att="${i}">${att.label}</li>`);
-  });
-
-  repoTitle.html(`NPM/Time for ${instance.repos.name}`);
-
-  $('#loader').hide();
-  $(document).on('click', '#legend li', function() {
-
-    let k = $(this).data('att');
-    let att = attributes[k];
-
-    title.html(`NPM changes for ${att['label']} vs Time`);
-
-    let datasets = [];
-    let dataset = [];
-
-    _.each(labels, function(lbl) {
-      let val = lbl in att['data'] ? att['data'][lbl] : 0;
-      dataset.push(val);
-    });
-
-    datasets.push({
-      label: att['label'],
-      fillColor: 'rgba(151,187,205,0.2)',
-      strokeColor: 'rgba(151,187,205,1)',
-      data: dataset
-    });
-
-    chart.html('<canvas></canvas>');
-    let ctx = chart.find('canvas').get(0).getContext('2d');
-    let chartData = { labels, datasets }
-    new Chart(ctx).Line(chartData, options);
-  });
 
 });
